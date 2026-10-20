@@ -1,0 +1,5 @@
+# Keep LF everywhere: the patch layer and the Makefile expect it.
+* text=auto eol=lf
+*.bat  text eol=crlf
+*.xlsx binary
+*.png  binary

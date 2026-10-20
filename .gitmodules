@@ -1,0 +1,3 @@
+[submodule "rtl/openPCIE"]
+	path = rtl/openPCIE
+	url = https://github.com/chili-chips-ba/openPCIE.git
