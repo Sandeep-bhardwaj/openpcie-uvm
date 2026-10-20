@@ -1,0 +1,13 @@
+-line-length
+-no-trailing-spaces
+-explicit-parameter-storage-type
+-parameter-name-style
+-unpacked-dimensions-range-ordering
+-explicit-function-lifetime
+-explicit-task-lifetime
+-always-comb
+-macro-name-style
+-forbidden-macro
+-plusarg-assignment
+-constraint-name-style
+-create-object-name-match

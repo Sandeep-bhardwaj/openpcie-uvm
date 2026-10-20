@@ -1,0 +1,37 @@
+openpcie-uvm
+Copyright (c) 2026 Sandeep-bhardwaj
+
+This repository contains a UVM verification environment for the open-source
+PCIe Root Complex of the openPCIE project (riscv_pcie_soc). Its own code and
+documentation are licensed under the MIT License (LICENSE). It is not
+affiliated with or endorsed by Chili.CHIPS*ba or NLnet; their names are used
+here only to identify the design under test.
+
+Third-party material
+--------------------
+
+1. openPCIE RTL (git submodule, not included)
+
+   rtl/openPCIE -> https://github.com/chili-chips-ba/openPCIE
+                   pinned at commit 6e48e11957e3f13494fbf6ffec91bfe2485d4e13
+
+   Copyright (c) 2026, Chili.CHIPS*ba. BSD 3-Clause License (LICENSE.openPCIE).
+   It is referenced by commit only and used unmodified. scripts/rtl_patches.py
+   copies the files the testbench needs into build/rtl_patched/ and applies
+   the patches listed by 'python scripts/rtl_patches.py --list'; the copy is a
+   build output and is not committed.
+
+   The openPCIE tree includes picorv32.v, the PicoRV32 RISC-V core
+   (https://github.com/YosysHQ/picorv32), Copyright (C) Claire Xenia Wolf,
+   ISC License.
+
+2. Patches to the openPCIE RTL
+
+   patches/*.patch contain lines of
+   2.rtl/2.RC-direct.opensource/src/riscv_pcie_soc.sv from the commit above,
+   with the changes this project proposes. They are derivative works of that
+   file and are distributed under its BSD 3-Clause License
+   (LICENSE.openPCIE), so that they can be contributed back unchanged.
+
+No openPCIE source, RTL or generated output is committed to this repository
+other than the patch context lines described in item 2.

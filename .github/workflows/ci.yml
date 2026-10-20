@@ -1,0 +1,58 @@
+# CI for checks that do not need a simulator licence. Vivado xsim cannot run on
+# GitHub-hosted runners, so simulation regressions are run locally (see README).
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python scripts compile
+        run: python -m py_compile scripts/*.py tb/fw/*.py
+
+      - name: Firmware builds and passes its self-test
+        run: python tb/fw/build_fw.py
+
+      - name: Patch layer applies to the pinned openPCIE RTL
+        run: python scripts/rtl_patches.py
+
+      - name: Testbench consistency checks
+        run: python scripts/check_tb.py
+
+      - name: TX state machine model (original vs fixed)
+        run: python scripts/tx_fsm_model.py -n 500 --seeds 2
+
+      - name: Upstream patches are up to date and apply cleanly
+        run: |
+          python scripts/make_upstream_patches.py --check
+          for p in patches/*.patch; do git -C rtl/openPCIE apply --check "$PWD/$p"; done
+
+      - name: RTL elaborates (slang)
+        run: |
+          pip install pyslang==11.0.0
+          python scripts/slang_check.py rtl
+
+      - name: Install Verible
+        run: |
+          VER=v0.0-4296-g0f262651
+          curl -sL https://github.com/chipsalliance/verible/releases/download/${VER}/verible-${VER}-linux-static-x86_64.tar.gz | tar xz
+          echo "$PWD/verible-${VER}/bin" >> "$GITHUB_PATH"
+
+      - name: SystemVerilog syntax
+        run: find tb -name '*.sv' -o -name '*.svh' | xargs verible-verilog-syntax
+
+      - name: SystemVerilog lint
+        run: |
+          find tb -name '*.sv' -o -name '*.svh' | \
+            xargs verible-verilog-lint --parse_fatal=false --rules_config .verible.rules
