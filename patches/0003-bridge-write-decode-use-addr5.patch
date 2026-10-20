@@ -1,0 +1,23 @@
+Subject: [PATCH] riscv_pcie_soc: qualify bridge writes with !mem_addr[5]
+
+The read decode uses mem_addr[5] to select PHY_STATUS at +0x20; the
+write decode used mem_addr[4:2] only. A write to the read-only
+PHY_STATUS therefore overwrote tx_header0, and a write to +0x2C
+started a transmit with whatever the header registers held.
+
+Found by the openpcie-uvm Tier 1 testbench (REG-004); see
+docs/verification_plan.md, section 11, in that repository.
+
+---
+--- a/2.rtl/2.RC-direct.opensource/src/riscv_pcie_soc.sv
++++ b/2.rtl/2.RC-direct.opensource/src/riscv_pcie_soc.sv
+@@ -172,7 +172,8 @@
+             if (mem_valid && is_bridge && !bridge_ready_reg) begin
+                 bridge_ready_reg <= 1'b1;
+ 
+-                if (mem_wstrb != '0) begin
++                // Match the read decode: +0x20..+0x3C is PHY_STATUS space.
++                if (mem_wstrb != '0 && !mem_addr[5]) begin
+                     case (mem_addr[4:2])
+                         3'b000: tx_header0 <= mem_wdata;
+                         3'b001: tx_header1 <= mem_wdata;

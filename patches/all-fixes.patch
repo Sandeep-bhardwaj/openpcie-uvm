@@ -1,0 +1,92 @@
+Subject: [PATCH] riscv_pcie_soc: fixes found by the openpcie-uvm testbench
+
+* riscv_pcie_soc: write ram from always, not always_ff (RTL-SIM-001)
+
+ram is initialised by `$readmemh` in an initial block and written by
+an always_ff. IEEE 1800-2017 9.2.2.4 forbids any other process writing
+a variable assigned in always_ff; VCS rejects the file with
+Error-[ICPD]. `always` removes the restriction with no change in
+simulation or synthesis behaviour.
+
+* riscv_pcie_soc: advance the TX FSM only on an accepted beat (TX-PROTO-004)
+
+s_axis_tx_* are registered, but the FSM tested s_axis_tx_tready in the
+cycle it scheduled them, i.e. against whatever was on the bus before.
+With an always-ready sink the errors cancel; under backpressure beat 0
+(the TLP header) is overwritten by beat 1 before it is accepted, and
+tvalid can drop while a beat is pending (AXI4-Stream 2.2.1). The FSM
+now advances only when the beat on the bus is taken, and IDLE holds
+the final beat until accepted.
+
+* riscv_pcie_soc: qualify bridge writes with !mem_addr[5] (REG-004)
+
+The read decode uses mem_addr[5] to select PHY_STATUS at +0x20; the
+write decode used mem_addr[4:2] only. A write to the read-only
+PHY_STATUS therefore overwrote tx_header0, and a write to +0x2C
+started a transmit with whatever the header registers held.
+
+---
+--- a/2.rtl/2.RC-direct.opensource/src/riscv_pcie_soc.sv
++++ b/2.rtl/2.RC-direct.opensource/src/riscv_pcie_soc.sv
+@@ -103,7 +103,9 @@
+     logic [31:0] ram_rdata_reg;
+     logic        ram_ready_reg;
+ 
+-    always_ff @(posedge clk) begin
++    // `ram` is also written by the $readmemh above, which IEEE 1800-2017
++    // 9.2.2.4 forbids for a variable assigned in always_ff.
++    always @(posedge clk) begin
+         ram_ready_reg <= 1'b0;
+         if (mem_valid && is_ram) begin
+             if (mem_wstrb == '0) begin
+@@ -172,7 +174,8 @@
+             if (mem_valid && is_bridge && !bridge_ready_reg) begin
+                 bridge_ready_reg <= 1'b1;
+ 
+-                if (mem_wstrb != '0) begin
++                // Match the read decode: +0x20..+0x3C is PHY_STATUS space.
++                if (mem_wstrb != '0 && !mem_addr[5]) begin
+                     case (mem_addr[4:2])
+                         3'b000: tx_header0 <= mem_wdata;
+                         3'b001: tx_header1 <= mem_wdata;
+@@ -189,24 +192,28 @@
+             end
+ 
+             case (tx_state)
++                // Advance only when the beat on the bus is accepted
++                // (AXI4-Stream: hold tvalid/tdata until tready).
+                 IDLE: begin
+-                    s_axis_tx_tvalid <= 1'b0;
++                    if (!s_axis_tx_tvalid || s_axis_tx_tready)
++                        s_axis_tx_tvalid <= 1'b0;
+                 end
+                 SEND_CYCLE_1: begin
+-                    s_axis_tx_tdata  <= {tx_header1, tx_header0};
+-                    s_axis_tx_tkeep  <= 8'hFF;
+-                    s_axis_tx_tvalid <= 1'b1;
+-                    s_axis_tx_tlast  <= 1'b0;
+-                    if (s_axis_tx_tready) tx_state <= SEND_CYCLE_2;
++                    if (!s_axis_tx_tvalid || s_axis_tx_tready) begin
++                        s_axis_tx_tdata  <= {tx_header1, tx_header0};
++                        s_axis_tx_tkeep  <= 8'hFF;
++                        s_axis_tx_tvalid <= 1'b1;
++                        s_axis_tx_tlast  <= 1'b0;
++                        tx_state         <= SEND_CYCLE_2;
++                    end
+                 end
+                 SEND_CYCLE_2: begin
+-                    s_axis_tx_tdata  <= {tx_data, tx_header2};
+-                    s_axis_tx_tkeep  <= (tx_header0[30] == 1'b1) ? 8'hFF : 8'h0F;
+-                    s_axis_tx_tvalid <= 1'b1;
+-                    s_axis_tx_tlast  <= 1'b1;
+-
+                     if (s_axis_tx_tready) begin
+-                        tx_state <= IDLE;
++                        s_axis_tx_tdata  <= {tx_data, tx_header2};
++                        s_axis_tx_tkeep  <= (tx_header0[30] == 1'b1) ? 8'hFF : 8'h0F;
++                        s_axis_tx_tvalid <= 1'b1;
++                        s_axis_tx_tlast  <= 1'b1;
++                        tx_state         <= IDLE;
+                     end
+                 end
+                 default: ;
